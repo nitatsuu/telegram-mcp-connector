@@ -1,0 +1,27 @@
+[project]
+name = "telegram-mcp-connector"
+version = "0.1.0"
+description = "MCP server that gives Claude access to your own Telegram account (MTProto)"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11"
+dependencies = [
+    "fastmcp>=4.1,<5",
+    "telethon>=1.45,<2",
+]
+
+[project.scripts]
+telegram-mcp-connector = "telegram_mcp_connector.cli:main"
+
+[dependency-groups]
+dev = ["pytest>=8"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/telegram_mcp_connector"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

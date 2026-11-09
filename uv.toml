@@ -1,0 +1,7 @@
+# Keep everything inside the project directory, so deleting the folder
+# removes the whole install (packages, cache, virtualenv).
+cache-dir = ".uv-cache"
+# Use the Python already on the system; never download a managed interpreter
+# into ~/.local/share/uv.
+python-preference = "only-system"
+python-downloads = "never"

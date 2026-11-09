@@ -1,0 +1,24 @@
+# --- secrets: never commit ---
+.data/
+.env
+*.env
+!.env.example
+*.session
+*.session-journal
+
+# --- local install (kept inside the project on purpose) ---
+.venv/
+.uv-cache/
+
+# --- python ---
+__pycache__/
+*.py[cod]
+.pytest_cache/
+dist/
+build/
+*.egg-info/
+
+# --- os / editors ---
+.DS_Store
+.vscode/
+.idea/
