@@ -125,6 +125,16 @@ def test_format_message_basic():
     assert out["date"].startswith("2026-11-09")
 
 
+def test_own_messages_show_real_name_not_saved_messages():
+    msg = SimpleNamespace(
+        id=1, date=NOW, sender=user(id=1, first="Ivan", is_self=True), out=True,
+        action=None, message="hi", media=None, reply_to=None, fwd_from=None, edit_date=None,
+    )
+    out = format_message(msg)
+    assert out["sender"] == {"id": 1, "name": "Ivan", "is_me": True}
+    assert out["outgoing"] is True
+
+
 # ---- send allowlist -----------------------------------------------------------
 
 def test_send_allowlist():

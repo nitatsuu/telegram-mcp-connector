@@ -56,9 +56,13 @@ def format_entity(entity: Any) -> dict[str, Any]:
 def format_sender(msg: Any) -> dict[str, Any] | None:
     sender = getattr(msg, "sender", None)
     if sender is not None:
-        out = {"id": utils.get_peer_id(sender), "name": entity_title(sender)}
+        # "Saved Messages" is a chat name; as a sender, show the real name.
+        name = utils.get_display_name(sender) or entity_title(sender)
+        out: dict[str, Any] = {"id": utils.get_peer_id(sender), "name": name}
         if getattr(sender, "username", None):
             out["username"] = sender.username
+        if isinstance(sender, types.User) and sender.is_self:
+            out["is_me"] = True
         return out
     sender_id = getattr(msg, "sender_id", None)
     if sender_id is not None:
