@@ -54,9 +54,15 @@ app (any name). You get an `api_id` and an `api_hash`.
 uv run telegram-mcp-connector login
 ```
 
-It asks for `api_id`/`api_hash` (saved to `.data/.env`), then your phone number,
-the code Telegram sends you, and your 2FA password if you use one. The device
-shows up as **telegram-mcp-connector** under Telegram → Settings → Devices.
+It asks for `api_id`/`api_hash` (saved to `.data/.env`), then prints a **QR
+code**. Scan it from your phone: Telegram → Settings → Devices → Link Desktop
+Device. If you use 2FA, it then asks for your password. The device shows up as
+**telegram-mcp-connector** under Settings → Devices.
+
+To log in with a phone number and code instead, run
+`uv run telegram-mcp-connector login --phone`. If you're already logged in on
+another device, the code arrives **in the Telegram app** (in the official
+"Telegram" chat), not by SMS. Type `r` at the prompt to resend it another way.
 
 Check the result:
 

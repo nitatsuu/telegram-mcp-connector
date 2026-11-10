@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import platform
 import re
 from datetime import datetime, timezone
@@ -34,7 +35,7 @@ NOT_LOGGED_IN = (
 
 
 def make_client(config: Config) -> TelegramClient:
-    return TelegramClient(
+    client = TelegramClient(
         str(config.session_path),
         config.api_id,
         config.api_hash,
@@ -42,6 +43,11 @@ def make_client(config: Config) -> TelegramClient:
         system_version=f"{platform.system()} {platform.release()}",
         app_version=__version__,
     )
+    # Telethon creates the SQLite session file in the constructor; lock it
+    # down before any auth key is written to it.
+    if config.session_file.is_file():
+        os.chmod(config.session_file, 0o600)
+    return client
 
 
 def parse_chat_ref(chat: str | int) -> str | int:

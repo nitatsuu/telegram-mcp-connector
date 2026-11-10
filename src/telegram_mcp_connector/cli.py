@@ -47,14 +47,110 @@ def _ask_credentials(config: Config) -> Config:
     return Config.load(config.data_dir)
 
 
-async def _login(config: Config) -> int:
+_CODE_DELIVERY = {
+    "SentCodeTypeApp": (
+        "in the Telegram app: open the chat named 'Telegram' (blue check mark) "
+        "on your phone or desktop — it does NOT come by SMS"
+    ),
+    "SentCodeTypeSms": "by SMS",
+    "SentCodeTypeSmsWord": "by SMS (a word)",
+    "SentCodeTypeSmsPhrase": "by SMS (a phrase)",
+    "SentCodeTypeFirebaseSms": "by SMS",
+    "SentCodeTypeFragmentSms": "via Fragment (fragment.com) for an anonymous number",
+    "SentCodeTypeCall": "by a phone call (a voice will read it)",
+    "SentCodeTypeFlashCall": "as a missed call: the code is the calling number",
+    "SentCodeTypeMissedCall": "as a missed call: the code is the last digits of the calling number",
+    "SentCodeTypeEmailCode": "to your login email",
+}
+
+
+def _describe_delivery(sent: object) -> str:
+    name = type(getattr(sent, "type", None)).__name__
+    if name == "SentCodeTypeSetUpEmailRequired":
+        return (
+            "nowhere yet: Telegram requires a login email for this account. "
+            "Use QR login instead: `uv run telegram-mcp-connector login`"
+        )
+    return _CODE_DELIVERY.get(name, name)
+
+
+async def _finish_with_password(client) -> None:
+    from telethon.errors import PasswordHashInvalidError
+
+    while True:
+        try:
+            await client.sign_in(password=getpass.getpass("2FA password (hidden): "))
+            return
+        except PasswordHashInvalidError:
+            print("Wrong password, try again.")
+
+
+async def _login_qr(client) -> None:
+    import qrcode
+    from telethon.errors import SessionPasswordNeededError
+
+    print("Log in by QR code:")
+    print("  on your phone open Telegram -> Settings -> Devices -> Link Desktop Device,")
+    print("  then scan the code below. It refreshes every ~30 seconds.\n")
+    qr_login = await client.qr_login()
+    while True:
+        qr = qrcode.QRCode(border=1)
+        qr.add_data(qr_login.url)
+        qr.print_ascii(invert=True)
+        try:
+            await qr_login.wait(timeout=30)
+            return
+        except asyncio.TimeoutError:
+            print("\nCode expired, here is a new one:\n")
+            await qr_login.recreate()
+        except SessionPasswordNeededError:
+            print("Scanned. This account has two-step verification.")
+            await _finish_with_password(client)
+            return
+
+
+async def _login_phone(client) -> None:
+    from telethon import functions
+    from telethon.errors import (
+        PhoneCodeExpiredError,
+        PhoneCodeInvalidError,
+        SessionPasswordNeededError,
+    )
+
+    phone = input("Phone number (international format, e.g. +380...): ").strip()
+    sent = await client.send_code_request(phone)
+    print(f"Code sent {_describe_delivery(sent)}.")
+    while True:
+        code = input("Login code (or 'r' to resend another way): ").strip()
+        if code.lower() == "r":
+            try:
+                sent = await client(functions.auth.ResendCodeRequest(phone, sent.phone_code_hash))
+                print(f"Code re-sent {_describe_delivery(sent)}.")
+            except Exception as exc:  # noqa: BLE001 - show Telegram's reason as is
+                print(f"Could not resend: {exc}")
+            continue
+        try:
+            await client.sign_in(phone, code, phone_code_hash=sent.phone_code_hash)
+            return
+        except PhoneCodeInvalidError:
+            print("Wrong code, try again.")
+        except PhoneCodeExpiredError:
+            print("Code expired. Type 'r' to get a new one.")
+        except SessionPasswordNeededError:
+            await _finish_with_password(client)
+            return
+
+
+async def _login(config: Config, use_phone: bool) -> int:
     client = make_client(config)
     try:
-        await client.start(
-            phone=lambda: input("Phone number (international format, e.g. +380...): ").strip(),
-            code_callback=lambda: input("Login code from Telegram: ").strip(),
-            password=lambda: getpass.getpass("2FA password (hidden): "),
-        )
+        await client.connect()
+        if await client.is_user_authorized():
+            print("Already logged in.")
+        elif use_phone:
+            await _login_phone(client)
+        else:
+            await _login_qr(client)
         me = await client.get_me()
         print(f"\nLogged in as {utils.get_display_name(me)} (id {me.id}).")
     finally:
@@ -65,12 +161,12 @@ async def _login(config: Config) -> int:
     return 0
 
 
-def cmd_login(_args: argparse.Namespace) -> int:
+def cmd_login(args: argparse.Namespace) -> int:
     config = Config.load()
     ensure_private_dir(config.data_dir)
     if not config.has_credentials:
         config = _ask_credentials(config)
-    return asyncio.run(_login(config))
+    return asyncio.run(_login(config, use_phone=args.phone))
 
 
 async def _status(config: Config) -> int:
@@ -85,7 +181,7 @@ async def _status(config: Config) -> int:
     try:
         await client.connect()
         if not await client.is_user_authorized():
-            print("Logged in:   no (session expired or revoked) -> run login again")
+            print("Logged in:   no (login not finished, or session revoked) -> run login again")
             return 1
         me = await client.get_me()
         print(f"Logged in:   yes, as {utils.get_display_name(me)} (id {me.id})")
@@ -127,7 +223,9 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--version", action="version", version=__version__)
     sub = parser.add_subparsers(dest="command")
     sub.add_parser("serve", help="run the MCP server over stdio (default)").set_defaults(func=cmd_serve)
-    sub.add_parser("login", help="log in to Telegram interactively").set_defaults(func=cmd_login)
+    login = sub.add_parser("login", help="log in to Telegram (QR code by default)")
+    login.add_argument("--phone", action="store_true", help="log in with phone number + code instead of QR")
+    login.set_defaults(func=cmd_login)
     sub.add_parser("status", help="show login state and settings").set_defaults(func=cmd_status)
     sub.add_parser("logout", help="revoke and delete the session").set_defaults(func=cmd_logout)
     args = parser.parse_args(argv)
